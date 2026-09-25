@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chấm Thi Trắc Nghiệm AI - Bản Web Độc Lập</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+    </style>
+
+    <style id="diagnostics-css">
+        #diagnostics-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            z-index: 999999;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+    </style>
+
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl bg-indigo-600/30 p-2 rounded-xl border border-indigo-500/30 text-indigo-400">📝</span>
+                <div>
+                    <h1 class="text-base font-bold text-white flex items-center gap-2">
+                        Chấm Trắc Nghiệm AI <span class="bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border border-emerald-500/30">Web App PC</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Chạy trực tiếp máy tính • Dùng Webcam USB hoặc Camera laptop</p>
+                </div>
+            </div>
+
+            <!-- Quick API Key Status & Actions -->
+            <div class="flex items-center space-x-3">
+                <button type="button" onclick="openKeyModal()" id="btn-api-key-status" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2 rounded-xl border border-slate-700 transition">
+                    <span id="key-indicator" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span id="key-label">Cấu hình API Key</span>
+                </button>
+                <button type="button" onclick="exportToExcel()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3.5 py-2 rounded-xl shadow-sm transition">
+                    <span>📊</span>
+                    <span>Xuất Excel</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left / Center Column: Camera Feed & Realtime Scanner (7 cols) -->
+        <section class="lg:col-span-7 flex flex-col space-y-4">
+            
+            <!-- Camera & Viewfinder Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col relative">
+                <!-- Device Picker & Controls Row -->
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div class="flex items-center gap-2 flex-1 min-w-[220px]">
+                        <span class="text-sm">📹</span>
+                        <select id="camera-select" onchange="onCameraSelected(this.value)" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">Đang tìm kiếm Camera / Webcam...</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="runCameraDiagnostics()" title="Kiểm tra chi tiết lỗi kết nối" class="bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white px-3 py-2 rounded-xl text-xs border border-amber-500/40 transition flex items-center gap-1 font-semibold">
+                            <span>🛠️</span> Chẩn đoán lỗi
+                        </button>
+                        <button type="button" onclick="refreshCameras().then(startCamera)" title="Tìm lại webcam" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl text-xs border border-slate-700 transition">
+                            🔄 Quét lại
+                        </button>
+                        <button type="button" id="btn-toggle-camera" onclick="toggleCameraStream()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition">
+                            Bật Camera
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Video Viewport -->
+                <div class="relative bg-black rounded-xl overflow-hidden min-h-[380px] lg:min-h-[460px] flex items-center justify-center border border-slate-800">
+                    <video id="webcam-video" autoplay playsinline muted class="w-full h-full object-contain max-h-[520px]"></video>
+                    
+                    <!-- Scan Guide Overlay -->
+                    <div id="scan-overlay" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
+                        <div class="w-[88%] h-[85%] border-2 border-dashed border-indigo-400/60 rounded-2xl relative shadow-[0_0_20px_rgba(99,102,241,0.15)] flex flex-col justify-between p-3">
+                            <!-- Corners decor -->
+                            <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-indigo-400 rounded-tl-lg"></div>
+                            <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-indigo-400 rounded-tr-lg"></div>
+                            <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-indigo-400 rounded-bl-lg"></div>
+                            <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-indigo-400 rounded-br-lg"></div>
+
+                            <span class="text-[11px] font-semibold bg-indigo-950/80 text-indigo-300 px-2.5 py-1 rounded-md self-center backdrop-blur-sm border border-indigo-800/40">
+                                Đặt khổ giấy bài thi trọn vẹn trong khung ngắm
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Hidden Canvas for frame snapshot -->
+                    <canvas id="snapshot-canvas" class="hidden"></canvas>
+
+                    <!-- Camera placeholder when stopped -->
+                    <div id="camera-placeholder" class="hidden absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center text-center p-6 space-y-3">
+                        <span class="text-5xl">📷</span>
+                        <p class="text-sm font-semibold text-slate-300">Camera đang tạm dừng hoặc chưa được cấp quyền</p>
+                        <button onclick="startCamera()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold">
+                            Bật Lại Webcam
+                        </button>
+                    </div>
+
+                    <!-- AI Grading Spinner Loader -->
+                    <div id="grading-spinner" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 space-y-3 z-20">
+                        <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-sm font-bold text-indigo-300">AI đang phân tích và chấm bài thi...</span>
+                        <span class="text-xs text-slate-400">Vui lòng giữ nguyên webcam trong vài giây</span>
+                    </div>
+                </div>
+
+                <!-- Action Capture Bar -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    <button type="button" onclick="captureAndGrade()" id="btn-capture" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm">
+                        <span class="text-lg">📸</span>
+                        <span>Chụp & Chấm Điểm Ngay</span>
+                    </button>
+
+                    <label class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold py-3.5 px-4 rounded-xl shadow transition-all flex items-center justify-center gap-2 text-sm cursor-pointer">
+                        <span class="text-lg">📤</span>
+                        <span>Tải Ảnh Bài Thi Từ Ổ Đĩa</span>
+                        <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Exam Configuration Settings -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                        <span>⚙️</span> Cấu Hình Đề Thi & Đáp Án Mẫu
+                    </h2>
+                    <button type="button" onclick="saveExamConfig()" class="text-xs bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg border border-indigo-500/40 transition">
+                        Lưu Cấu Hình
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Loại Bài Kiểm Tra</label>
+                        <select id="cfg-test-type" class="w-full bg-slate-800 border border-slate-700 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="ANSWER_TABLE">Học sinh điền vào Ô/BẢNG ĐÁP ÁN</option>
+                            <option value="CIRCLED_ON_SHEET">Khoanh tròn TRỰC TIẾP TRÊN ĐỀ</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Tổng Số Câu</label>
+                        <input type="number" id="cfg-total-questions" min="1" max="120" value="20" onchange="renderKeyInputs()" class="w-full bg-slate-800 border border-slate-700 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Điểm / Mỗi Câu Đúng</label>
+                        <input type="number" id="cfg-points-per-question" step="0.05" min="0.01" value="0.5" class="w-full bg-slate-800 border border-slate-700 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <!-- Fast Master Key Inputs -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Đáp án chuẩn (Master Key)
+                        </label>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="fillQuickKeys('A')" class="text-[10px] text-slate-400 hover:text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Tất cả A</button>
+                            <button type="button" onclick="clearKeys()" class="text-[10px] text-rose-400 hover:text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Xóa hết</button>
+                        </div>
+                    </div>
+                    <div id="keys-container" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-10 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-950/60 rounded-xl border border-slate-800">
+                        <!-- Dynamically filled with input boxes -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Results & History List (5 cols) -->
+        <section class="lg:col-span-5 flex flex-col space-y-4">
+            
+            <!-- Statistics Banner -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <span class="block text-[10px] text-slate-400 uppercase font-semibold">Đã Chấm</span>
+                    <span id="stat-total-graded" class="text-xl font-bold text-white">0</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <span class="block text-[10px] text-slate-400 uppercase font-semibold">Điểm TB</span>
+                    <span id="stat-avg-score" class="text-xl font-bold text-indigo-400">0.0</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <span class="block text-[10px] text-slate-400 uppercase font-semibold">Cao Nhất</span>
+                    <span id="stat-max-score" class="text-xl font-bold text-emerald-400">0.0</span>
+                </div>
+            </div>
+
+            <!-- Graded Results History -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col min-h-[500px]">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                        <span>📋</span> Danh Sách Bài Đã Chấm
+                    </h2>
+                    <button type="button" onclick="clearAllHistory()" class="text-xs text-rose-400 hover:text-rose-300 font-semibold transition">
+                        Xóa Lịch Sử
+                    </button>
+                </div>
+
+                <!-- Search box -->
+                <div class="mb-3">
+                    <input type="text" id="search-input" oninput="filterResults()" placeholder="Tìm tên học sinh..." class="w-full bg-slate-800 border border-slate-700 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+
+                <!-- Results Scroll Container -->
+                <div id="results-list" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                    <div class="text-center text-slate-500 text-xs py-12 border border-dashed border-slate-800 rounded-xl">
+                        Chưa có bài thi nào được chấm.<br>Hướng webcam vào bài thi và bấm "Chụp & Chấm Điểm".
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Student Result Detail Modal -->
+    <div id="detail-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <!-- Modal Header -->
+            <div class="bg-slate-800/80 px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                <div>
+                    <h3 id="modal-student-name" class="text-base font-bold text-white">Tên Học Sinh</h3>
+                    <p id="modal-test-meta" class="text-xs text-slate-400">Chi tiết kết quả chấm</p>
+                </div>
+                <button type="button" onclick="closeModal()" class="text-slate-400 hover:text-white text-2xl font-bold">&times;</button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-12 gap-6">
+                <!-- Left: Captured Paper Image -->
+                <div class="md:col-span-5 bg-black rounded-xl p-2 border border-slate-800 flex flex-col items-center justify-center">
+                    <span class="text-[11px] font-semibold text-slate-400 mb-2">Ảnh bài làm chụp từ webcam</span>
+                    <img id="modal-image" src="" alt="Bài làm" class="max-h-[380px] w-full object-contain rounded-lg">
+                </div>
+
+                <!-- Right: Breakdown Grid -->
+                <div class="md:col-span-7 flex flex-col space-y-4">
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/60 text-center">
+                            <span class="text-[10px] text-slate-400 uppercase font-semibold block">Tổng Điểm</span>
+                            <span id="modal-score" class="text-xl font-bold text-indigo-400">0.0</span>
+                        </div>
+                        <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/60 text-center">
+                            <span class="text-[10px] text-slate-400 uppercase font-semibold block">Đúng / Tổng</span>
+                            <span id="modal-ratio" class="text-xl font-bold text-emerald-400">0 / 0</span>
+                        </div>
+                        <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/60 text-center">
+                            <span class="text-[10px] text-slate-400 uppercase font-semibold block">Thời Gian</span>
+                            <span id="modal-time" class="text-xs text-slate-300 font-semibold flex items-center justify-center h-full">--</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-300 mb-2">Chi tiết từng câu:</h4>
+                        <div id="modal-answers-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-64 overflow-y-auto p-1">
+                            <!-- Answer cells dynamically generated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-slate-800/60 px-6 py-3 border-t border-slate-700 flex justify-end">
+                <button type="button" onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-4 py-2 rounded-xl font-semibold">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Settings Modal -->
+    <div id="key-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    🔑 Cấu Hình Gemini API Key
+                </h3>
+                <button type="button" onclick="closeKeyModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Để chạy bản Web App độc lập trực tiếp trên máy tính chấm bài bằng AI, bạn chỉ cần nhập Gemini API Key (hoàn toàn miễn phí từ Google AI Studio).
+            </p>
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Gemini API Key</label>
+                <input type="password" id="input-api-key" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-700 text-xs rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="flex justify-between items-center text-xs">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:underline">
+                    Lấy API Key miễn phí tại đây ↗
+                </a>
+                <button type="button" onclick="saveApiKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-xl transition">
+                    Lưu Key
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Diagnostics Modal -->
+    <div id="diagnostics-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    🛠️ Kết Quả Chẩn Đoán Lỗi Webcam
+                </h3>
+                <button type="button" onclick="closeDiagnosticsModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            
+            <p class="text-xs text-slate-400">
+                Hệ thống tự động kiểm tra tất cả các tầng kỹ thuật (Giao thức, Quyền hệ thống, Trình điều khiển) để chỉ ra chính xác nguyên nhân:
+            </p>
+
+            <div id="diagnostics-content" class="space-y-2.5 max-h-80 overflow-y-auto font-mono text-xs">
+                <!-- Filled dynamically -->
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-800 text-xs">
+                <span class="text-slate-500">Mẹo: Chạy run_windows.bat để giải quyết 99% lỗi</span>
+                <div class="flex gap-2">
+                    <button type="button" onclick="runCameraDiagnostics()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-xl transition">
+                        Kiểm Tra Lại
+                    </button>
+                    <button type="button" onclick="closeDiagnosticsModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl transition">
+                        Đóng
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 transform translate-y-24 opacity-0 transition-all duration-300 z-50 bg-slate-800 border border-slate-700 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2">
+        <span id="toast-icon">✨</span>
+        <span id="toast-text">Thông báo</span>
+    </div>
+
+    <!-- Standalone Web App Logic Script -->
+    <script>
+/**
+ * Standalone Web App - Chấm Thi Trắc Nghiệm AI trực tiếp trên máy tính
+ * Sử dụng Webcam máy tính / Webcam USB rời & Gemini Flash API
+ */
+
+// Global State
+const STATE = {
+    apiKey: localStorage.getItem('gemini_api_key') || '',
+    stream: null,
+    devices: [],
+    selectedDeviceId: localStorage.getItem('selected_camera_id') || '',
+    isCameraRunning: false,
+    examConfig: {
+        testType: 'ANSWER_TABLE',
+        totalQuestions: 20,
+        pointsPerQuestion: 0.5,
+        masterKeys: {} // { 1: 'A', 2: 'B', ... }
+    },
+    history: [],
+    currentSnapshotDataUrl: null,
+    isGrading: false
+};
+
+// Initialization
+document.addEventListener('DOMContentLoaded', () => {
+    loadExamConfig();
+    loadHistory();
+    updateApiKeyStatus();
+    renderKeyInputs();
+    updateStats();
+    renderHistory();
+    initCamera();
+});
+
+// ==========================================
+// API Key Management
+// ==========================================
+function updateApiKeyStatus() {
+    const indicator = document.getElementById('key-indicator');
+    const label = document.getElementById('key-label');
+    const input = document.getElementById('input-api-key');
+
+    if (STATE.apiKey && STATE.apiKey.trim().length > 10) {
+        indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        label.textContent = 'API Key: Đã kết nối';
+        label.classList.add('text-emerald-400');
+        if (input) input.value = STATE.apiKey;
+    } else {
+        indicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+        label.textContent = 'Cấu hình API Key';
+        label.classList.remove('text-emerald-400');
+    }
+}
+
+function openKeyModal() {
+    const modal = document.getElementById('key-modal');
+    const input = document.getElementById('input-api-key');
+    input.value = STATE.apiKey || '';
+    modal.classList.remove('hidden');
+}
+
+function closeKeyModal() {
+    document.getElementById('key-modal').classList.add('hidden');
+}
+
+function saveApiKey() {
+    const input = document.getElementById('input-api-key');
+    const key = input.value.trim();
+    if (!key) {
+        showToast('Vui lòng nhập API Key hợp lệ', '⚠️');
+        return;
+    }
+    STATE.apiKey = key;
+    localStorage.setItem('gemini_api_key', key);
+    updateApiKeyStatus();
+    closeKeyModal();
+    showToast('Đã lưu API Key thành công!', '✅');
+}
+
+// ==========================================
+// Camera & Webcam Stream Handlers (Multi-Level Fallback)
+// ==========================================
+async function initCamera() {
+    // 1. Kiểm tra hỗ trợ mediaDevices và bối cảnh bảo mật (HTTPS / localhost)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const isFileProtocol = window.location.protocol === 'file:';
+        showCameraError({
+            name: isFileProtocol ? 'FileProtocolError' : 'InsecureContextError',
+            message: isFileProtocol
+                ? 'Trình duyệt chặn mở Webcam khi click đúp mở tệp file:// trực tiếp. Vui lòng chạy file run_windows.bat (hoặc server.py) để mở qua http://localhost:8000.'
+                : 'Trình duyệt yêu cầu kết nối bảo mật (HTTPS hoặc localhost) để mở Webcam.'
+        });
+        return;
+    }
+
+    try {
+        await refreshCameras();
+        await startCamera();
+    } catch (err) {
+        console.error('Camera init error:', err);
+        showCameraError(err);
+    }
+}
+
+async function refreshCameras() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        return;
+    }
+
+    try {
+        // Xin quyền trước một lần để lấy được tên (label) thật của Webcam
+        try {
+            const probeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            probeStream.getTracks().forEach(t => t.stop());
+        } catch (e) {
+            console.warn('Probe permission test failed or skipped:', e);
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        STATE.devices = devices.filter(d => d.kind === 'videoinput');
+
+        const select = document.getElementById('camera-select');
+        select.innerHTML = '';
+
+        if (STATE.devices.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'Không tìm thấy Webcam (Hãy cắm lại cổng USB)';
+            select.appendChild(opt);
+            return;
+        }
+
+        STATE.devices.forEach((device, index) => {
+            const opt = document.createElement('option');
+            opt.value = device.deviceId;
+            opt.textContent = device.label || `Webcam ${index + 1}`;
+            if (device.deviceId === STATE.selectedDeviceId) {
+                opt.selected = true;
+            }
+            select.appendChild(opt);
+        });
+
+        if (!STATE.selectedDeviceId && STATE.devices.length > 0) {
+            STATE.selectedDeviceId = STATE.devices[0].deviceId;
+            select.value = STATE.selectedDeviceId;
+        }
+    } catch (err) {
+        console.error('Error refreshing cameras:', err);
+    }
+}
+
+async function startCamera() {
+    const video = document.getElementById('webcam-video');
+    const placeholder = document.getElementById('camera-placeholder');
+    const toggleBtn = document.getElementById('btn-toggle-camera');
+
+    if (STATE.stream) {
+        STATE.stream.getTracks().forEach(track => track.stop());
+        STATE.stream = null;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        initCamera();
+        return;
+    }
+
+    let stream = null;
+    let lastError = null;
+
+    // Chiến lược Fallback 4 cấp độ để đảm bảo mọi webcam USB / camera ảo (OBS, DroidCam, Camo) đều chạy được
+    const attempts = [];
+    if (STATE.selectedDeviceId) {
+        // Cấp 1: Thử chính xác camera được chọn với độ phân giải HD
+        attempts.push({ video: { deviceId: { exact: STATE.selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        // Cấp 2: Thử camera được chọn nhưng không bắt buộc độ phân giải cao
+        attempts.push({ video: { deviceId: { exact: STATE.selectedDeviceId } }, audio: false });
+        // Cấp 3: Thử gợi ý camera được chọn (ideal)
+        attempts.push({ video: { deviceId: STATE.selectedDeviceId }, audio: false });
+    }
+    // Cấp 4: Mở camera bất kỳ có sẵn
+    attempts.push({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    // Cấp 5: Cơ bản nhất (Chỉ video: true)
+    attempts.push({ video: true, audio: false });
+
+    for (const constraint of attempts) {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraint);
+            if (stream) break;
+        } catch (e) {
+            lastError = e;
+            console.warn('Constraint attempt failed, trying next level:', constraint, e);
+        }
+    }
+
+    if (!stream) {
+        console.error('All camera attempts failed:', lastError);
+        showCameraError(lastError);
+        return;
+    }
+
+    try {
+        STATE.stream = stream;
+        video.muted = true;
+        video.setAttribute('muted', '');
+        video.srcObject = stream;
+        await video.play();
+
+        STATE.isCameraRunning = true;
+        placeholder.classList.add('hidden');
+        toggleBtn.textContent = 'Tắt Camera';
+        toggleBtn.className = 'bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition';
+        showToast('Đã kết nối Webcam thành công!', '📹');
+    } catch (err) {
+        console.error('Error playing video:', err);
+        showCameraError(err);
+    }
+}
+
+function stopCamera() {
+    const video = document.getElementById('webcam-video');
+    const placeholder = document.getElementById('camera-placeholder');
+    const toggleBtn = document.getElementById('btn-toggle-camera');
+
+    if (STATE.stream) {
+        STATE.stream.getTracks().forEach(track => track.stop());
+        STATE.stream = null;
+    }
+    video.srcObject = null;
+    STATE.isCameraRunning = false;
+    showCameraPlaceholder('Camera đang tạm dừng', 'Bấm nút dưới để bật lại webcam bất cứ lúc nào.');
+    toggleBtn.textContent = 'Bật Camera';
+    toggleBtn.className = 'bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition';
+}
+
+function toggleCameraStream() {
+    if (STATE.isCameraRunning) {
+        stopCamera();
+    } else {
+        startCamera();
+    }
+}
+
+function onCameraSelected(deviceId) {
+    if (!deviceId) return;
+    STATE.selectedDeviceId = deviceId;
+    localStorage.setItem('selected_camera_id', deviceId);
+    startCamera();
+}
+
+function showCameraPlaceholder(title, desc) {
+    const placeholder = document.getElementById('camera-placeholder');
+    if (!placeholder) return;
+    placeholder.classList.remove('hidden');
+    placeholder.innerHTML = `
+        <span class="text-4xl">📷</span>
+        <p class="text-sm font-bold text-slate-200 mt-2">${escapeHtml(title)}</p>
+        <p class="text-xs text-slate-400 max-w-sm mt-1 mb-4 leading-relaxed">${escapeHtml(desc)}</p>
+        <button onclick="startCamera()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-5 py-2.5 rounded-xl font-bold transition shadow-lg flex items-center gap-2">
+            <span>📹</span> Bật Lại Webcam
+        </button>
+    `;
+}
+
+function showCameraError(err) {
+    const placeholder = document.getElementById('camera-placeholder');
+    STATE.isCameraRunning = false;
+    const toggleBtn = document.getElementById('btn-toggle-camera');
+    toggleBtn.textContent = 'Bật Camera';
+    toggleBtn.className = 'bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition';
+
+    if (!placeholder) return;
+    placeholder.classList.remove('hidden');
+
+    let title = 'Không thể kết nối Webcam';
+    let message = 'Vui lòng kiểm tra lại thiết bị Webcam của bạn.';
+    let actionHtml = '';
+
+    const errName = err ? (err.name || '') : '';
+
+    const diagnosticBtn = `
+        <button type="button" onclick="runCameraDiagnostics()" class="bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white px-3.5 py-2 rounded-xl text-xs border border-amber-500/40 transition flex items-center gap-1.5 font-bold shadow">
+            <span>🛠️</span> Chẩn đoán lỗi chi tiết
+        </button>
+    `;
+
+    if (errName === 'FileProtocolError' || window.location.protocol === 'file:') {
+        title = 'Trình duyệt chặn mở Webcam qua file://';
+        message = 'Google Chrome & Edge vì lý do bảo mật sẽ khóa Webcam khi mở trực tiếp file:// từ thư mục. Bạn hãy chạy qua máy chủ cục bộ localhost để mở quyền.';
+        actionHtml = `
+            <div class="bg-indigo-950/80 border border-indigo-500/40 rounded-xl p-3 text-left max-w-md text-xs space-y-2 mt-3 text-slate-200">
+                <p class="font-bold text-indigo-300">💡 Cách khắc phục cực nhanh (1 click):</p>
+                <p>1. Mở thư mục <b>standalone-web</b> trên máy tính.</p>
+                <p>2. Click đúp vào file <b>run_windows.bat</b> (hoặc chạy <code>python server.py</code>).</p>
+                <p>3. Trình duyệt sẽ tự động mở <b>http://localhost:8000</b> và nhận Webcam ngay lập tức!</p>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="startCamera()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition shadow-lg">
+                    🔄 Thử lại kết nối
+                </button>
+                ${diagnosticBtn}
+            </div>
+        `;
+    } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        title = 'Quyền truy cập Webcam bị từ chối';
+        message = 'Bạn vừa bấm Chặn (Block) hoặc trình duyệt chưa được cấp phép dùng Camera.';
+        actionHtml = `
+            <div class="bg-amber-950/70 border border-amber-500/40 rounded-xl p-3 text-left max-w-md text-xs space-y-2 mt-3 text-amber-200">
+                <p class="font-bold text-amber-300">👉 Hướng dẫn mở khóa:</p>
+                <p>1. Nhìn lên thanh nhập địa chỉ web (URL) của trình duyệt.</p>
+                <p>2. Bấm vào biểu tượng <b>Ổ khóa 🔒</b> hoặc <b>Máy quay 📹</b> ở bên trái.</p>
+                <p>3. Chuyển quyền <b>Máy ảnh (Camera)</b> thành <b>Cho phép (Allow)</b>.</p>
+                <p>4. Bấm nút "Thử lại kết nối" bên dưới.</p>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="startCamera()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition shadow-lg">
+                    🔄 Thử lại kết nối
+                </button>
+                ${diagnosticBtn}
+            </div>
+        `;
+    } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        title = 'Không tìm thấy thiết bị Webcam';
+        message = 'Máy tính chưa nhận được Webcam USB hoặc Camera laptop bị tắt công tắc cơ học.';
+        actionHtml = `
+            <p class="text-xs text-slate-400 mt-1 max-w-sm">Hãy thử rút Webcam USB cắm lại vào cổng USB khác, hoặc kiểm tra cần gạt che camera trên viền laptop.</p>
+            <div class="flex flex-wrap gap-2 mt-3 justify-center">
+                <button onclick="refreshCameras().then(startCamera)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
+                    🔄 Quét lại Webcam
+                </button>
+                ${diagnosticBtn}
+                <label class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs px-4 py-2 rounded-xl font-semibold cursor-pointer">
+                    📁 Chọn ảnh từ ổ đĩa
+                    <input type="file" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+                </label>
+            </div>
+        `;
+    } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+        title = 'Webcam đang bị ứng dụng khác chiếm giữ';
+        message = 'Một phần mềm khác trên máy tính đang sử dụng Webcam này (như Zoom, Zalo, Microsoft Teams, Camera Windows, OBS).';
+        actionHtml = `
+            <p class="text-xs text-slate-400 mt-1 max-w-sm">Vui lòng tắt các ứng dụng hội họp video hoặc đóng các tab trình duyệt khác đang mở camera rồi thử lại.</p>
+            <div class="flex gap-2 mt-4 justify-center">
+                <button onclick="startCamera()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
+                    🔄 Thử lại kết nối
+                </button>
+                ${diagnosticBtn}
+            </div>
+        `;
+    } else {
+        title = 'Chưa thể kết nối được với Webcam';
+        message = err ? (err.message || 'Lỗi không xác định khi mở luồng video') : 'Không thể khởi động camera.';
+        actionHtml = `
+            <div class="flex flex-wrap gap-2 justify-center mt-4">
+                <button onclick="startCamera()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
+                    🔄 Thử lại kết nối
+                </button>
+                ${diagnosticBtn}
+                <label class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
+                    📁 Tải ảnh bài thi từ máy tính
+                    <input type="file" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+                </label>
+            </div>
+        `;
+    }
+
+    placeholder.innerHTML = `
+        <span class="text-4xl text-amber-400">⚠️</span>
+        <p class="text-sm font-bold text-white mt-2">${escapeHtml(title)}</p>
+        <p class="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">${escapeHtml(message)}</p>
+        ${actionHtml}
+    `;
+}
+
+// ==========================================
+// Exam Configuration & Master Keys
+// ==========================================
+function loadExamConfig() {
+    const saved = localStorage.getItem('standalone_exam_config');
+    if (saved) {
+        try {
+            STATE.examConfig = JSON.parse(saved);
+        } catch (e) {
+            console.warn('Failed parsing saved config:', e);
+        }
+    }
+
+    document.getElementById('cfg-test-type').value = STATE.examConfig.testType || 'ANSWER_TABLE';
+    document.getElementById('cfg-total-questions').value = STATE.examConfig.totalQuestions || 20;
+    document.getElementById('cfg-points-per-question').value = STATE.examConfig.pointsPerQuestion || 0.5;
+}
+
+function saveExamConfig() {
+    const testType = document.getElementById('cfg-test-type').value;
+    const totalQuestions = parseInt(document.getElementById('cfg-total-questions').value) || 20;
+    const pointsPerQuestion = parseFloat(document.getElementById('cfg-points-per-question').value) || 0.5;
+
+    // Collect keys
+    const masterKeys = {};
+    for (let i = 1; i <= totalQuestions; i++) {
+        const input = document.getElementById(`key-q-${i}`);
+        if (input && input.value.trim()) {
+            masterKeys[i] = input.value.trim().toUpperCase();
+        }
+    }
+
+    STATE.examConfig = {
+        testType,
+        totalQuestions,
+        pointsPerQuestion,
+        masterKeys
+    };
+
+    localStorage.setItem('standalone_exam_config', JSON.stringify(STATE.examConfig));
+    showToast('Đã lưu cấu hình đề thi & đáp án mẫu!', '💾');
+}
+
+function renderKeyInputs() {
+    const total = parseInt(document.getElementById('cfg-total-questions').value) || 20;
+    const container = document.getElementById('keys-container');
+    container.innerHTML = '';
+
+    for (let i = 1; i <= total; i++) {
+        const val = STATE.examConfig.masterKeys[i] || '';
+        const div = document.createElement('div');
+        div.className = 'flex flex-col items-center bg-slate-900 border border-slate-800 rounded-lg p-1.5 focus-within:border-indigo-500';
+        div.innerHTML = `
+            <span class="text-[10px] text-slate-400 font-mono">C${i}</span>
+            <input type="text" id="key-q-${i}" maxlength="1" value="${val}"
+                   oninput="this.value = this.value.toUpperCase(); autoFocusNextKey(${i}, ${total});"
+                   placeholder="-" 
+                   class="w-full text-center bg-transparent text-sm font-bold text-indigo-400 focus:outline-none uppercase">
+        `;
+        container.appendChild(div);
+    }
+}
+
+function autoFocusNextKey(currentIndex, maxIndex) {
+    if (currentIndex < maxIndex) {
+        const nextInput = document.getElementById(`key-q-${currentIndex + 1}`);
+        if (nextInput) {
+            nextInput.focus();
+            nextInput.select();
+        }
+    }
+}
+
+function fillQuickKeys(letter) {
+    const total = parseInt(document.getElementById('cfg-total-questions').value) || 20;
+    for (let i = 1; i <= total; i++) {
+        const input = document.getElementById(`key-q-${i}`);
+        if (input) input.value = letter;
+    }
+    saveExamConfig();
+}
+
+function clearKeys() {
+    const total = parseInt(document.getElementById('cfg-total-questions').value) || 20;
+    for (let i = 1; i <= total; i++) {
+        const input = document.getElementById(`key-q-${i}`);
+        if (input) input.value = '';
+    }
+    saveExamConfig();
+}
+
+// ==========================================
+// Snapshot & File Handling
+// ==========================================
+function captureSnapshot() {
+    const video = document.getElementById('webcam-video');
+    const canvas = document.getElementById('snapshot-canvas');
+    if (!video.videoWidth || !video.videoHeight) {
+        throw new Error('Video stream chưa sẵn sàng.');
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        processGrading(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    // Reset file input
+    event.target.value = '';
+}
+
+// ==========================================
+// AI Grading Core (Gemini API Integration)
+// ==========================================
+async function captureAndGrade() {
+    if (STATE.isGrading) return;
+
+    if (!STATE.apiKey) {
+        showToast('Vui lòng nhập Gemini API Key để bắt đầu chấm', '🔑');
+        openKeyModal();
+        return;
+    }
+
+    if (!STATE.isCameraRunning) {
+        showToast('Vui lòng bật webcam hoặc tải ảnh từ máy tính', '⚠️');
+        return;
+    }
+
+    try {
+        const dataUrl = captureSnapshot();
+        await processGrading(dataUrl);
+    } catch (err) {
+        console.error('Error taking snapshot:', err);
+        showToast(err.message || 'Lỗi chụp ảnh từ webcam', '❌');
+    }
+}
+
+async function processGrading(imageDataUrl) {
+    if (STATE.isGrading) return;
+    STATE.isGrading = true;
+    showSpinner(true);
+
+    try {
+        const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
+        saveExamConfig(); // Make sure latest answers are saved
+
+        const cfg = STATE.examConfig;
+        const total = cfg.totalQuestions || 20;
+
+        const testTypeInstruction = cfg.testType === 'CIRCLED_ON_SHEET'
+            ? `Học sinh KHOANH TRÒN hoặc ĐÁNH DẤU đáp án trực tiếp trên tờ đề thi (các chữ cái A, B, C, D).
+Hãy quan sát thật kỹ từng câu hỏi từ 1 đến ${total}:
+- CHỈ nhận diện là A, B, C hoặc D nếu chữ cái đó được khoanh tròn hoặc đánh dấu gạch chéo RÕ RÀNG VÀ DUY NHẤT.
+- NẾU KHÔNG CÓ chữ cái nào được khoanh/đánh dấu ở câu đó: BẮT BUỘC trả về studentAnswer = "-".
+- NẾU CÓ TỪ 2 CHỮ CÁI TRỞ LÊN cùng được khoanh tròn: BẮT BUỘC trả về studentAnswer = "X".`
+            : `Học sinh ĐIỀN ĐÁP ÁN vào một bảng ô đáp án (viết chữ A, B, C, D vào từng ô tương ứng với số câu).
+Hãy quan sát từng ô đáp án từ câu 1 đến câu ${total}:
+- NẾU Ô HOÀN TOÀN TRỐNG (học sinh không ghi chữ nào): BẮT BUỘC trả về studentAnswer = "-".
+- NẾU Ô CÓ TỪ 2 CHỮ CÁI TRỞ LÊN: BẮT BUỘC trả về studentAnswer = "X".
+- NẾU Ô GHI RÕ RÀNG 1 CHỮ CÁI: Trả về chữ cái đó ("A", "B", "C", "D").`;
+
+        const systemPrompt = `Bạn là một hệ thống máy quét OCR nhận diện nét bút khoanh bài thi trắc nghiệm.
+CẢNH BÁO TỐI CAO:
+1. BẠN LÀ MÁY SCAN THỦ CÔNG, TUYỆT ĐỐI KHÔNG DÙNG KIẾN THỨC MÔN HỌC ĐỂ TỰ ĐOÁN ĐÁP ÁN ĐÚNG.
+2. NẾU KHÔNG CÓ NÉT KHOANH Ở CÂU ĐÓ -> BẮT BUỘC TRẢ VỀ "-".
+3. NẾU KHOANH CHỮ CÁI NÀO (DÙ ĐÚNG HAY SAI MÔN HỌC), BẠN PHẢI TRẢ VỀ ĐÚNG CHỮ CÁI ĐÓ MẮT THẤY KHOANH.
+4. NẾU KHOANH TỪ 2 ĐÁP ÁN TRỞ LÊN -> TRẢ VỀ "X".
+5. TÊN HỌC SINH (studentName): Đọc ĐÚNG CHÍNH XÁC từng chữ viết tay hoặc in ở mục "Họ và tên" / "Tên học sinh". Nếu không có tên -> trả về "Học sinh ẩn danh".`;
+
+        const userPrompt = `Hãy quan sát thật cẩn thận ảnh bài thi đính kèm và trích xuất BẢN CHẤT MẮT THẤY CÁC VẾT KHOANH BÚT CỦA HỌC SINH.
+CẤU HÌNH:
+- Tổng số câu hỏi: ${total}
+- Hình thức: ${testTypeInstruction}
+
+Trả về duy nhất JSON hợp lệ, không bọc markdown block:
+{
+  "studentName": "Nguyễn Văn A",
+  "answers": [
+    {"questionNumber": 1, "studentAnswer": "A"},
+    {"questionNumber": 2, "studentAnswer": "B"}
+  ]
+}`;
+
+        const payload = {
+            contents: [
+                {
+                    parts: [
+                        { text: userPrompt },
+                        {
+                            inlineData: {
+                                mimeType: "image/jpeg",
+                                data: base64Data
+                            }
+                        }
+                    ]
+                }
+            ],
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            },
+            generationConfig: {
+                responseMimeType: "application/json",
+                temperature: 0.0
+            }
+        };
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${STATE.apiKey}`;
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `Lỗi API (HTTP ${res.status})`);
+        }
+
+        const jsonRes = await res.json();
+        const candidate = jsonRes?.candidates?.[0];
+        const rawText = candidate?.content?.parts?.[0]?.text;
+        if (!rawText) {
+            throw new Error('Gemini không trả về kết quả phân tích.');
+        }
+
+        let cleaned = rawText.trim();
+        if (cleaned.startsWith('```json')) {
+            cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
+        } else if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```/, '').replace(/```$/, '').trim();
+        }
+
+        const parsed = JSON.parse(cleaned);
+        const gradedItem = calculateScore(parsed, imageDataUrl);
+
+        // Save to History
+        STATE.history.unshift(gradedItem);
+        localStorage.setItem('standalone_grading_history', JSON.stringify(STATE.history));
+
+        updateStats();
+        renderHistory();
+        openDetailModal(gradedItem.id);
+        showToast(`Đã chấm xong bài của ${gradedItem.studentName}! Điểm: ${gradedItem.score}`, '🎉');
+
+    } catch (err) {
+        console.error('Grading error:', err);
+        showToast(err.message || 'Lỗi trong quá trình chấm điểm bài thi', '❌');
+    } finally {
+        showSpinner(false);
+        STATE.isGrading = false;
+    }
+}
+
+function calculateScore(aiOutput, imageDataUrl) {
+    const total = STATE.examConfig.totalQuestions || 20;
+    const pts = STATE.examConfig.pointsPerQuestion || 0.5;
+    const masterKeys = STATE.examConfig.masterKeys || {};
+
+    const aiAnswersMap = {};
+    if (aiOutput.answers && Array.isArray(aiOutput.answers)) {
+        aiOutput.answers.forEach(a => {
+            aiAnswersMap[a.questionNumber] = (a.studentAnswer || '-').toUpperCase().trim();
+        });
+    }
+
+    let correctCount = 0;
+    const details = [];
+
+    for (let i = 1; i <= total; i++) {
+        const studentAns = aiAnswersMap[i] || '-';
+        const correctAns = (masterKeys[i] || '').toUpperCase().trim();
+        const isCorrect = (correctAns && studentAns === correctAns);
+
+        if (isCorrect) correctCount++;
+
+        details.push({
+            questionNumber: i,
+            studentAnswer: studentAns,
+            correctAnswer: correctAns || '?',
+            isCorrect
+        });
+    }
+
+    const calculatedScore = Math.round((correctCount * pts) * 100) / 100;
+    const maxScore = Math.round((total * pts) * 100) / 100;
+
+    return {
+        id: 'res_' + Date.now(),
+        timestamp: new Date().toISOString(),
+        studentName: aiOutput.studentName && aiOutput.studentName.trim() ? aiOutput.studentName.trim() : 'Học sinh ẩn danh',
+        score: calculatedScore,
+        maxScore,
+        correctCount,
+        totalQuestions: total,
+        pointsPerQuestion: pts,
+        details,
+        imageDataUrl
+    };
+}
+
+function showSpinner(show) {
+    const spinner = document.getElementById('grading-spinner');
+    if (show) {
+        spinner.classList.remove('hidden');
+    } else {
+        spinner.classList.add('hidden');
+    }
+}
+
+// ==========================================
+// History & Statistics
+// ==========================================
+function loadHistory() {
+    const saved = localStorage.getItem('standalone_grading_history');
+    if (saved) {
+        try {
+            STATE.history = JSON.parse(saved);
+        } catch (e) {
+            console.warn('Failed parsing history:', e);
+        }
+    }
+}
+
+function updateStats() {
+    const totalGraded = STATE.history.length;
+    document.getElementById('stat-total-graded').textContent = totalGraded;
+
+    if (totalGraded === 0) {
+        document.getElementById('stat-avg-score').textContent = '0.0';
+        document.getElementById('stat-max-score').textContent = '0.0';
+        return;
+    }
+
+    const scores = STATE.history.map(h => h.score);
+    const avg = scores.reduce((a, b) => a + b, 0) / totalGraded;
+    const max = Math.max(...scores);
+
+    document.getElementById('stat-avg-score').textContent = (Math.round(avg * 10) / 10).toFixed(1);
+    document.getElementById('stat-max-score').textContent = max.toFixed(1);
+}
+
+function renderHistory(filteredList = null) {
+    const list = filteredList || STATE.history;
+    const container = document.getElementById('results-list');
+
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-slate-500 text-xs py-12 border border-dashed border-slate-800 rounded-xl">
+                Chưa có bài thi nào được chấm.<br>Hướng webcam vào bài thi và bấm "Chụp & Chấm Điểm".
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = list.map(item => {
+        const timeStr = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateStr = new Date(item.timestamp).toLocaleDateString();
+        const scoreColor = item.score >= (item.maxScore * 0.8) 
+            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' 
+            : (item.score >= (item.maxScore * 0.5) 
+                ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30' 
+                : 'text-rose-400 bg-rose-500/10 border-rose-500/30');
+
+        return `
+            <div onclick="openDetailModal('${item.id}')" class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-indigo-500/50 rounded-xl p-3 flex items-center justify-between cursor-pointer transition shadow-sm">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0 border border-slate-700">
+                        <img src="${item.imageDataUrl}" alt="Bài làm" class="w-full h-full object-cover">
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-white">${escapeHtml(item.studentName)}</div>
+                        <div class="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                            <span>Đúng: ${item.correctCount}/${item.totalQuestions}</span>
+                            <span>•</span>
+                            <span>${timeStr} ${dateStr}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-extrabold px-2.5 py-1 rounded-lg border ${scoreColor}">
+                        ${item.score} <span class="text-[10px] font-normal text-slate-400">/ ${item.maxScore}</span>
+                    </span>
+                    <button type="button" onclick="event.stopPropagation(); deleteHistoryItem('${item.id}')" title="Xóa" class="text-slate-500 hover:text-rose-400 p-1 text-sm">
+                        ✕
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function filterResults() {
+    const q = (document.getElementById('search-input').value || '').toLowerCase().trim();
+    if (!q) {
+        renderHistory();
+        return;
+    }
+    const filtered = STATE.history.filter(item => 
+        item.studentName.toLowerCase().includes(q)
+    );
+    renderHistory(filtered);
+}
+
+function deleteHistoryItem(id) {
+    STATE.history = STATE.history.filter(h => h.id !== id);
+    localStorage.setItem('standalone_grading_history', JSON.stringify(STATE.history));
+    updateStats();
+    renderHistory();
+    showToast('Đã xóa bài thi khỏi danh sách', '🗑️');
+}
+
+function clearAllHistory() {
+    if (STATE.history.length === 0) return;
+    if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử chấm bài không?')) return;
+
+    STATE.history = [];
+    localStorage.removeItem('standalone_grading_history');
+    updateStats();
+    renderHistory();
+    showToast('Đã xóa sạch lịch sử chấm!', '🗑️');
+}
+
+// ==========================================
+// Result Detail Modal
+// ==========================================
+function openDetailModal(id) {
+    const item = STATE.history.find(h => h.id === id);
+    if (!item) return;
+
+    document.getElementById('modal-student-name').textContent = item.studentName;
+    document.getElementById('modal-test-meta').textContent = `${item.totalQuestions} câu • Hệ số ${item.pointsPerQuestion} điểm/câu`;
+    document.getElementById('modal-image').src = item.imageDataUrl;
+    document.getElementById('modal-score').textContent = `${item.score} / ${item.maxScore}`;
+    document.getElementById('modal-ratio').textContent = `${item.correctCount} / ${item.totalQuestions}`;
+    document.getElementById('modal-time').textContent = new Date(item.timestamp).toLocaleString();
+
+    const grid = document.getElementById('modal-answers-grid');
+    grid.innerHTML = item.details.map(d => {
+        const bg = d.isCorrect 
+            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' 
+            : (d.studentAnswer === '-' 
+                ? 'bg-slate-800/60 border-slate-700 text-slate-400' 
+                : 'bg-rose-950/40 border-rose-500/40 text-rose-300');
+
+        return `
+            <div class="border rounded-lg p-2 text-xs flex items-center justify-between ${bg}">
+                <span class="font-bold font-mono">C${d.questionNumber}</span>
+                <span class="font-semibold">Chọn: ${d.studentAnswer}</span>
+                <span class="text-[10px] text-slate-400">(ĐA: ${d.correctAnswer})</span>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('detail-modal').classList.add('hidden');
+}
+
+// ==========================================
+// Excel Export Handler (SheetJS)
+// ==========================================
+function exportToExcel() {
+    if (STATE.history.length === 0) {
+        showToast('Chưa có dữ liệu bài chấm nào để xuất file Excel', '⚠️');
+        return;
+    }
+
+    if (typeof XLSX === 'undefined') {
+        showToast('Thư viện Excel đang tải, vui lòng thử lại sau vài giây', '⚠️');
+        return;
+    }
+
+    const maxQ = Math.max(...STATE.history.map(h => h.totalQuestions), STATE.examConfig.totalQuestions || 20);
+
+    const rows = STATE.history.map((item, index) => {
+        const row = {
+            'STT': index + 1,
+            'Họ Và Tên': item.studentName,
+            'Tổng Điểm': item.score,
+            'Điểm Tối Đa': item.maxScore,
+            'Số Câu Đúng': item.correctCount,
+            'Tổng Số Câu': item.totalQuestions,
+            'Thời Gian Chấm': new Date(item.timestamp).toLocaleString()
+        };
+
+        // Add each question
+        for (let q = 1; q <= maxQ; q++) {
+            const detail = item.details.find(d => d.questionNumber === q);
+            row[`Câu ${q}`] = detail ? detail.studentAnswer : '-';
+        }
+
+        return row;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bang_Diem_Cham_Thi');
+
+    const fileName = `Bang_Diem_Trac_Nghiem_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    showToast(`Đã xuất file ${fileName} thành công!`, '📊');
+}
+
+// ==========================================
+// Utilities
+// ==========================================
+function showToast(message, icon = '✨') {
+    const toast = document.getElementById('toast');
+    const toastText = document.getElementById('toast-text');
+    const toastIcon = document.getElementById('toast-icon');
+
+    toastText.textContent = message;
+    toastIcon.textContent = icon;
+
+    toast.classList.remove('translate-y-24', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+
+    setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-24', 'opacity-0');
+    }, 3500);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, m => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[m]);
+}
+
+// ==========================================
+// Comprehensive Camera Diagnostics Tool (Ultra-Resilient)
+// ==========================================
+async function runCameraDiagnostics() {
+    const modal = document.getElementById('diagnostics-modal');
+    const container = document.getElementById('diagnostics-content');
+    const placeholder = document.getElementById('camera-placeholder');
+
+    // Force show modal with direct inline styles
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.zIndex = '99999';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+    }
+
+    const isFile = window.location.protocol === 'file:';
+    const isSecure = window.isSecureContext === true;
+
+    // Helper to render live progress to both modal and camera placeholder
+    function renderResults(results, isRunning = true) {
+        const html = `
+            ${isFile ? `
+                <div class="bg-rose-950/90 border-2 border-rose-500 rounded-xl p-4 text-left text-white shadow-xl mb-3">
+                    <div class="flex items-center gap-2 font-bold text-sm text-rose-300">
+                        <span>🚨</span> NGUYÊN NHÂN CHÍNH: BẠN ĐANG MỞ FILE TRỰC TIẾP (file://)
+                    </div>
+                    <p class="text-xs text-rose-100 mt-2 leading-relaxed">
+                        Trình duyệt Chrome và Edge <b>tuyệt đối cấm</b> trang web mở trực tiếp từ ổ cứng (đường dẫn bắt đầu bằng <code>file:///</code>) kết nối với Webcam vì lý do an ninh hệ thống.
+                    </p>
+                    <div class="bg-black/50 rounded-lg p-3 mt-3 text-xs space-y-1.5 border border-rose-800/60 font-sans">
+                        <p class="font-bold text-amber-300">👉 HÃY LÀM THEO 3 BƯỚC ĐỂ BẬT WEBCAM NGAY LẬP TỨC:</p>
+                        <p>1. Đóng cửa sổ trình duyệt hiện tại lại.</p>
+                        <p>2. Mở thư mục bạn đã giải nén trên máy tính.</p>
+                        <p>3. <b>Click đúp vào file <span class="bg-amber-400 text-black px-1.5 py-0.5 rounded font-mono font-bold">run_windows.bat</span></b></p>
+                        <p class="text-emerald-300 mt-1">✓ Một cửa sổ mới sẽ tự động bật lên ở địa chỉ <b>http://localhost:8000</b> và Webcam sẽ hoạt động ngay lập tức!</p>
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="space-y-2">
+                ${results.map(r => `
+                    <div class="bg-slate-800/90 border ${r.error ? 'border-rose-500/60 bg-rose-950/30' : (r.warn ? 'border-amber-500/60 bg-amber-950/20' : 'border-slate-700')} rounded-xl p-3 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="text-base">${r.icon}</span>
+                            <span class="font-bold text-white">${escapeHtml(r.title)}</span>
+                            <span class="text-slate-300 ml-auto font-mono text-[11px] truncate max-w-[220px]">${escapeHtml(r.detail)}</span>
+                        </div>
+                        ${r.error ? `<div class="mt-2 text-rose-200 bg-rose-950/80 border border-rose-800/50 p-2.5 rounded-lg text-xs leading-relaxed font-sans">${escapeHtml(r.error)}</div>` : ''}
+                        ${r.warn ? `<div class="mt-2 text-amber-200 bg-amber-950/80 border border-amber-800/50 p-2.5 rounded-lg text-xs leading-relaxed font-sans">${escapeHtml(r.warn)}</div>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+
+            ${isRunning ? '<div class="text-center py-2 text-indigo-400 text-xs font-semibold animate-pulse">⏳ Đang tiến hành kiểm tra các tầng hệ thống tiếp theo...</div>' : ''}
+        `;
+
+        if (container) {
+            container.innerHTML = html;
+        }
+
+        // Also update placeholder directly in center of screen
+        if (placeholder && !STATE.isCameraRunning) {
+            placeholder.classList.remove('hidden');
+            placeholder.style.display = 'block';
+            placeholder.innerHTML = `
+                <div class="max-w-xl mx-auto p-4 text-left">
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-700 pb-2">
+                        <span class="font-bold text-white text-sm">🛠️ Kết Quả Chẩn Đoán Webcam Trên Máy Tính</span>
+                        <button onclick="runCameraDiagnostics()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg">Kiểm tra lại</button>
+                    </div>
+                    ${html}
+                </div>
+            `;
+        }
+    }
+
+    const results = [];
+
+    // Test 1: URL & Protocol
+    if (isFile) {
+        results.push({
+            icon: '❌',
+            title: 'Giao thức chạy:',
+            detail: `file:// (${window.location.protocol})`,
+            error: 'Trình duyệt CHẶN quyền mở Webcam khi mở file HTML trực tiếp. Hãy chạy file run_windows.bat trong thư mục giải nén để mở qua http://localhost:8000.'
+        });
+    } else {
+        results.push({
+            icon: '✅',
+            title: 'Giao thức chạy:',
+            detail: `${window.location.protocol}//${window.location.host}`
+        });
+    }
+    renderResults(results, true);
+
+    // Test 2: Secure Context
+    if (isSecure || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        results.push({
+            icon: '✅',
+            title: 'Bối cảnh bảo mật:',
+            detail: 'Hợp lệ (Localhost / HTTPS)'
+        });
+    } else {
+        results.push({
+            icon: '⚠️',
+            title: 'Bối cảnh bảo mật:',
+            detail: 'Không an toàn (Insecure)',
+            warn: 'Trình duyệt yêu cầu HTTPS hoặc localhost. Nếu dùng qua mạng LAN IP (192.168.x.x), Chrome sẽ chặn.'
+        });
+    }
+    renderResults(results, true);
+
+    // Test 3: MediaDevices API
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        results.push({
+            icon: '✅',
+            title: 'API Camera Trình Duyệt:',
+            detail: 'navigator.mediaDevices.getUserMedia SẴN SÀNG'
+        });
+    } else {
+        results.push({
+            icon: '❌',
+            title: 'API Camera Trình Duyệt:',
+            detail: 'KHÔNG KHẢ DỤNG',
+            error: 'Do đang mở tệp trực tiếp file:// hoặc phiên bản trình duyệt quá cũ.'
+        });
+    }
+    renderResults(results, true);
+
+    // Test 4: Permission State
+    try {
+        if (navigator.permissions && navigator.permissions.query) {
+            const perm = await Promise.race([
+                navigator.permissions.query({ name: 'camera' }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1500))
+            ]);
+            if (perm && perm.state === 'granted') {
+                results.push({ icon: '✅', title: 'Quyền Truy Cập Camera:', detail: 'ĐÃ CẤP QUYỀN (Granted)' });
+            } else if (perm && perm.state === 'prompt') {
+                results.push({ icon: 'ℹ️', title: 'Quyền Truy Cập Camera:', detail: 'Chờ người dùng xác nhận (Prompt)' });
+            } else if (perm && perm.state === 'denied') {
+                results.push({
+                    icon: '❌',
+                    title: 'Quyền Truy Cập Camera:',
+                    detail: 'ĐANG BỊ TỪ CHỐI (Denied)',
+                    error: 'Bấm biểu tượng 🔒 hoặc 📹 ở thanh địa chỉ web (URL) bên trên cùng, chọn "Cho phép" (Allow) rồi bấm Thử lại.'
+                });
+            }
+        }
+    } catch (e) {
+        results.push({ icon: 'ℹ️', title: 'Quyền Camera:', detail: 'Kiểm tra lúc mở stream' });
+    }
+    renderResults(results, true);
+
+    // Test 5: Enumerate Devices
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+            const devices = await Promise.race([
+                navigator.mediaDevices.enumerateDevices(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+            ]);
+            const videoInputs = devices.filter(d => d.kind === 'videoinput');
+            if (videoInputs.length > 0) {
+                const names = videoInputs.map((d, i) => `${i + 1}. ${d.label || 'Webcam ' + (i + 1)}`).join(' | ');
+                results.push({
+                    icon: '✅',
+                    title: `Thiết bị phát hiện:`,
+                    detail: `Tìm thấy ${videoInputs.length} Webcam: ${names}`
+                });
+            } else {
+                results.push({
+                    icon: '❌',
+                    title: 'Thiết bị phát hiện:',
+                    detail: '0 Webcam tìm thấy',
+                    error: 'Máy tính chưa nhận Webcam USB. Hãy rút dây USB cắm sang cổng khác, hoặc kiểm tra cần gạt che camera trên viền laptop.'
+                });
+            }
+        }
+    } catch (e) {
+        results.push({ icon: '⚠️', title: 'Quét thiết bị:', detail: e.message || 'Lỗi quét' });
+    }
+    renderResults(results, true);
+
+    // Test 6: Direct Stream Test with 2.5s Timeout
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !isFile) {
+        try {
+            const streamPromise = navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('PromptTimeout')), 2500));
+            const testStream = await Promise.race([streamPromise, timeoutPromise]);
+            
+            testStream.getTracks().forEach(t => t.stop());
+            results.push({
+                icon: '🎉',
+                title: 'Thử nghiệm mở Stream:',
+                detail: 'KẾT NỐI THÀNH CÔNG! Trình duyệt đã kết nối tốt với Webcam.'
+            });
+        } catch (err) {
+            let advice = 'Lỗi hệ thống Windows hoặc phần cứng.';
+            if (err.message === 'PromptTimeout') {
+                advice = 'Trình duyệt đang hiện hộp thoại hỏi bạn có cho phép dùng Camera không ở góc trên bên trái màn hình. Hãy bấm nút "Cho phép" (Allow)!';
+            } else if (err.name === 'NotAllowedError') {
+                advice = 'Quyền Camera bị chặn. Bấm vào biểu tượng 🔒 ở thanh URL để cấp phép.';
+            } else if (err.name === 'NotFoundError') {
+                advice = 'Không tìm thấy camera tương thích.';
+            } else if (err.name === 'NotReadableError') {
+                advice = 'Webcam đang bị Zoom, Zalo, Microsoft Teams hoặc ứng dụng khác chiếm giữ. Hãy tắt các ứng dụng đó.';
+            }
+
+            results.push({
+                icon: '❌',
+                title: 'Thử nghiệm mở Stream:',
+                detail: `${err.name || 'Lỗi'}: ${err.message}`,
+                error: advice
+            });
+        }
+    }
+
+    renderResults(results, false);
+}
+
+function closeDiagnosticsModal() {
+    const modal = document.getElementById('diagnostics-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+    }
+}
+
+</script>
+</body>
+</html>

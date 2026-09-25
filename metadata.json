@@ -1,0 +1,6 @@
+{
+  "name": "Chấm Trắc Nghiệm",
+  "description": "Ứng dụng chấm thi trắc nghiệm bằng AI từ ảnh chụp đề thi hoặc bảng đáp án, hỗ trợ nhập khóa đáp án thủ công/excel và điều khiển từ máy tính qua IP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
